@@ -192,43 +192,88 @@ server <- function(input, output, session) {
   
   # --- Show Modal with Split FeaturePlot ---
   observeEvent(input$showSplitFeaturePlot, {
-    req(input$gene) #Ensure gene input
+    req(input$gene)
     
-    # Input validation
     validate(
       need(input$gene %in% rownames(sc_obj),
            paste("Gene", input$gene, "not found in Seurat Object."))
     )
-    # Show modal only if gene is valid
+    
     if (input$gene %in% rownames(sc_obj)){
       showModal(
         modalDialog(
           title = "FeaturePlot Split by Genotype",
-          plotOutput("featurePlotSplit", height = "300px", width = "900px"),  #Plot inside modal
+          plotOutput("featurePlotSplit", height = "300px", width = "900px"),
           easyClose = TRUE,
-          footer = modalButton("Close")
+          footer = tagList(
+            modalButton("Close"),
+            downloadButton("downloadSplitFeature", "Download PDF")
+          )
         )
       )
     }
   })
   
+  # Render the split FeaturePlot inside the modal
+  output$featurePlotSplit <- renderPlot({
+    req(input$gene)
+    FeaturePlot(sc_obj, features = input$gene, split.by = "genotype", order = TRUE)
+  })
+  
+  # Download handler for the split FeaturePlot
+  output$downloadSplitFeature <- downloadHandler(
+    filename = function() {
+      paste("Featureplot_Split_", input$gene, "_", Sys.Date(), ".pdf", sep = "")
+    },
+    content = function(file) {
+      req(input$gene)
+      plot_to_save <- FeaturePlot(sc_obj, features = input$gene, split.by = "genotype", order = TRUE)
+      pdf(file, width = 10, height = 5)
+      print(plot_to_save)
+      dev.off()
+    }
+  )
+  
   # --- Show Modal with Split VlnPlot ---
   observeEvent(input$showSplitVlnPlot, {
     req(input$gene)
-    #Input validation
+    
     validate(
       need(input$gene %in% rownames(sc_obj), "Gene not found")
     )
-    #Show modal only if gene is valid
+    
     if (input$gene %in% rownames(sc_obj)){
       showModal(modalDialog(
         title = "Violin Plot - Split by Genotype",
-        plotOutput("vlnPlotSplit",  height = "300px", width = "900px"), # Plot inside modal
+        plotOutput("vlnPlotSplit",  height = "300px", width = "900px"),
         easyClose = TRUE,
-        footer = modalButton("Close")
+        footer = tagList(
+          modalButton("Close"),
+          downloadButton("downloadSplitVln", "Download PDF")
+        )
       ))
     }
   })
+  
+  # Render the split VlnPlot inside the modal
+  output$vlnPlotSplit <- renderPlot({
+    req(input$gene)
+    VlnPlot(sc_obj, features = input$gene, pt.size = 0.1, split.by = 'genotype')
+  })
+  
+  # Download handler for the split VlnPlot
+  output$downloadSplitVln <- downloadHandler(
+    filename = function() {
+      paste("Vlnplot_Split_", input$gene, "_", Sys.Date(), ".pdf", sep = "")
+    },
+    content = function(file) {
+      req(input$gene)
+      plot_to_save <- VlnPlot(sc_obj, features = input$gene, pt.size = 0.1, split.by = 'genotype')
+      pdf(file, width = 10, height = 5)
+      print(plot_to_save)
+      dev.off()
+    }
+  )
   
   # --- Run and Display Differential Expression Results ---
   observeEvent(input$run_de, {
@@ -585,19 +630,23 @@ server <- function(input, output, session) {
     )
     
     if (input$gene1 %in% rownames(sc_obj) && input$gene2 %in% rownames(sc_obj)){
-      # Define default colors 
+      
+      # Define default colors
       default_color1 <- "red"
       default_color2 <- "blue"
-      default_color3 <- "grey90"  # Default for double-negatives
+      default_color3 <- "grey90"
       
       color1_val <- ifelse(is.null(input$color1) || input$color1 == "", default_color1, input$color1)
       color2_val <- ifelse(is.null(input$color2) || input$color2 == "", default_color2, input$color2)
       color3_val <- default_color3
       
-      split_plot <- FeaturePlot(sc_obj, features = c(input$gene1, input$gene2), blend = TRUE, 
-                                order = TRUE, blend.threshold = 0.1, 
-                                split.by = 'genotype', 
-                                cols = c(color3_val, color1_val, color2_val))  
+      # Create the plot inside the modal dialog to display it
+      output$featurePlotSplit <- renderPlot({
+        FeaturePlot(sc_obj, features = c(input$gene1, input$gene2), blend = TRUE,
+                    order = TRUE, blend.threshold = 0.1,
+                    split.by = 'genotype',
+                    cols = c(color3_val, color1_val, color2_val))
+      })
       
       showModal(
         modalDialog(
@@ -610,28 +659,42 @@ server <- function(input, output, session) {
           )
         )
       )
-      
-      output$featurePlotSplit <- renderPlot({
-        split_plot
-      })
-      
-      output$downloadSplitPlot <- downloadHandler(
-        filename = function() {
-          req(input$gene1, input$gene2)
-          if (!is.null(input$gene1) && !is.null(input$gene2)) {
-            paste("BlendedPlot_Split_", input$gene1, "_", input$gene2, ".pdf", sep = "")
-          } else {
-            "BlendedPlot_Split.pdf"
-          }
-        },
-        content = function(file) {
-          pdf(file, width = 12, height = 8)
-          print(split_plot)
-          dev.off()
-        }
-      )
     }
   })
+  
+  # Download handler for the blended split FeaturePlot
+  output$downloadSplitPlot <- downloadHandler(
+    filename = function() {
+      req(input$gene1, input$gene2)
+      if (!is.null(input$gene1) && !is.null(input$gene2)) {
+        paste("BlendedPlot_Split_", input$gene1, "_", input$gene2, ".pdf", sep = "")
+      } else {
+        "BlendedPlot_Split.pdf"
+      }
+    },
+    content = function(file) {
+      req(input$gene1, input$gene2, input$color1, input$color2)
+      
+      # Re-calculate the plot parameters and create the plot object inside the handler
+      default_color1 <- "red"
+      default_color2 <- "blue"
+      default_color3 <- "grey90"
+      
+      color1_val <- ifelse(is.null(input$color1) || input$color1 == "", default_color1, input$color1)
+      color2_val <- ifelse(is.null(input$color2) || input$color2 == "", default_color2, input$color2)
+      color3_val <- default_color3
+      
+      plot_to_save <- FeaturePlot(sc_obj, features = c(input$gene1, input$gene2), blend = TRUE,
+                                  order = TRUE, blend.threshold = 0.1,
+                                  split.by = 'genotype',
+                                  cols = c(color3_val, color1_val, color2_val))
+      
+      # Print the plot to the PDF file
+      pdf(file, width = 12, height = 8)
+      print(plot_to_save)
+      dev.off()
+    }
+  )
 }
 
 shinyApp(ui = ui, server = server)
