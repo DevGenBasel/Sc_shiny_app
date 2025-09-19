@@ -10,7 +10,7 @@ if (!requireNamespace("presto", quietly = TRUE)) devtools::install_github("immun
 invisible(lapply(c(list_of_packages, "presto"), library, character.only = TRUE))
 
 # --- Load Data BEFORE ui or server (NON-REACTIVE) ---
-load("/DMGE$/teamfolder/Shiny_sc/sc_obj.RData")  
+load("/Volumes/DMGE$/teamfolder/Shiny_sc/sc_obj.RData") 
 
 # Ensure 'identity' is a factor
 sc_obj <- SetIdent(sc_obj, value = factor(Idents(sc_obj),
